@@ -46,7 +46,7 @@ const Args = struct {
     port: u16,
 };
 
-fn parseArgs(args: std.process.ArgIterator) Args {
+fn parseArgs(args: *std.process.ArgIterator) !Args {
     _ = args.next();
     var addr: []const u8 = "127.0.0.1";
     var port: u16 = 9000;
@@ -63,14 +63,14 @@ fn parseArgs(args: std.process.ArgIterator) Args {
             continue;
         }
     }
-    return .{ addr, port };
+    return Args{ .addr = addr, .port = port };
 }
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
-    const args = try std.process.argsWithAllocator(allocator);
-    const parsed = parseArgs(args);
+    var args = try std.process.argsWithAllocator(allocator);
+    const parsed = try parseArgs(&args);
     //parse from args and fallback to default values
     const addr = parsed.addr;
     const port = parsed.port;
