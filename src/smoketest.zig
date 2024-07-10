@@ -8,7 +8,6 @@ fn handleConnection(conn: std.net.Server.Connection) !void {
     var buf: [4096]u8 = undefined;
     var reader = conn.stream.reader();
     var writer = conn.stream.writer();
-
     while (true) {
         const bytes_read = reader.read(&buf) catch |err| {
             std.log.err("Error reading from {}: {}\n", .{ conn.address, err });
