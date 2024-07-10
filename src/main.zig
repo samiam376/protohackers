@@ -41,12 +41,13 @@ fn smoke_test_listener(addr: []const u8, port: u16) !void {
     }
 }
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = gpa.allocator();
-    var args = try std.process.argsWithAllocator(allocator);
+const Args = struct {
+    addr: []const u8,
+    port: u16,
+};
+
+fn parseArgs(args: std.process.ArgIterator) Args {
     _ = args.next();
-    //parse from args and fallback to default values
     var addr: []const u8 = "127.0.0.1";
     var port: u16 = 9000;
     while (args.next()) |arg| {
@@ -59,10 +60,20 @@ pub fn main() !void {
                 port = try std.fmt.parseInt(u16, tmp, 10);
             }
         } else {
-            std.debug.print("else\n", .{});
             continue;
         }
     }
+    return .{ addr, port };
+}
+
+pub fn main() !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    const args = try std.process.argsWithAllocator(allocator);
+    const parsed = parseArgs(args);
+    //parse from args and fallback to default values
+    const addr = parsed.addr;
+    const port = parsed.port;
 
     try smoke_test_listener(addr, port);
 }
