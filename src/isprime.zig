@@ -2,29 +2,41 @@ const std = @import("std");
 
 const net = std.net;
 
+const DELIM = '\n';
+
 fn handleConnection(conn: std.net.Server.Connection) !void {
     std.log.info("Handling connection from {}\n", .{conn.address});
     defer conn.stream.close();
-    std.json.parseFromValue();
-    var buf: [4096]u8 = undefined;
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
     var reader = conn.stream.reader();
     var writer = conn.stream.writer();
     while (true) {
-        const bytes_read = reader.read(&buf) catch |err| {
-            std.log.err("Error reading from {}: {}\n", .{ conn.address, err });
-            return;
-        };
+        var array = std.ArrayList(u8).init(allocator);
+        defer array.deinit();
+        reader.readUntilDelimiterArrayList(&array, DELIM, 4096) catch |err| {
+            if (err == error.EndOfStream) {
+                std.log.info("Connection closed by {}\n", .{conn.address});
+                break;
+            }
 
-        if (bytes_read == 0) {
-            std.log.info("client disconnected\n", .{});
-            return;
-        }
-        std.log.info("Read {} bytes from {}\n", .{ bytes_read, conn.address });
-        writer.writeAll(buf[0..bytes_read]) catch |err| {
-            std.log.err("Error writing to {}: {}\n", .{ conn.address, err });
+            std.log.err("Error reading from stream: {}", .{err});
+            break;
+        };
+        const num = parseMsg(array.items, allocator) catch |err| {
+            std.log.err("Error parsing message: {}\n", .{err});
+            try writer.writeAll("Malformed request\n");
             return;
         };
-        std.log.info("Wrote {} bytes to {}\n", .{ bytes_read, conn.address });
+        const is_prime = isPrime(num);
+        const response = Response{ .method = "isPrime", .prime = is_prime };
+        try std.json.stringify(
+            response,
+            .{},
+            writer,
+        );
+        try writer.writeByte(DELIM);
     }
 }
 
@@ -83,6 +95,10 @@ test "is_prime" {
 const MsgError = error{Malformed};
 
 const Msg = struct { method: []u8, number: u64 };
+const Response = struct {
+    method: []const u8,
+    prime: bool,
+};
 
 // parse bytes into a json of
 // {"method":"isPrime","number":123}
@@ -107,4 +123,4 @@ test "parse" {
 
     const invalidMethod = "{\"method\":\"isEven\",\"number\":123}";
     try std.testing.expectEqual(parseMsg(invalidMethod, allocator), MsgError.Malformed);
-    }
+}

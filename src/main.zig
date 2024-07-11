@@ -1,6 +1,6 @@
 const std = @import("std");
 const net = std.net;
-const smoketest = @import("smoketest.zig");
+const isprime = @import("isprime.zig");
 
 const Args = struct {
     addr: []const u8,
@@ -32,9 +32,8 @@ pub fn main() !void {
     const allocator = gpa.allocator();
     var args = try std.process.argsWithAllocator(allocator);
     const parsed = try parseArgs(&args);
-    //parse from args and fallback to default values
     const addr = parsed.addr;
     const port = parsed.port;
 
-    try smoketest.run(addr, port);
+    try isprime.run(addr, port);
 }
