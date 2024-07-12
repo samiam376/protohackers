@@ -40,3 +40,42 @@ test "parseMsg" {
     };
     try std.testing.expectEqualDeep(expectedInsert, parsedInsert);
 }
+
+const Price = struct {
+    cents: i32,
+    timestamp: i32,
+};
+
+const AssetPricing = struct {
+    prices: std.ArrayList(Price),
+
+    pub fn new(allocator: std.mem.Allocator) AssetPricing {
+        return AssetPricing{ .prices = std.ArrayList(Price).init(allocator) };
+    }
+
+    pub fn deinit(self: *AssetPricing) void {
+        self.prices.deinit();
+    }
+
+    pub fn avg(a: AssetPricing, lb: i32, ub: i32) i32 {
+        if (lb > ub) {
+            return 0;
+        }
+
+        var acc: i32 = 0;
+        const len: i32 = @intCast(a.prices.items.len);
+
+        if (!len) {
+            return 0;
+        }
+
+        for (a.prices.items) |p| {
+            if (lb <= p.timestamp and p.timestamp <= ub) {
+                acc += p.cents;
+            }
+        }
+
+        const mean = acc / len;
+        return mean;
+    }
+};
