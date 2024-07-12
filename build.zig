@@ -75,7 +75,7 @@ pub fn build(b: *std.Build) void {
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
 
     const exe_unit_tests = b.addTest(.{
-        .root_source_file = b.path("src/isprime.zig"),
+        .root_source_file = b.path("src/mean_to_an_end.zig"),
         .target = target,
         .optimize = optimize,
     });
