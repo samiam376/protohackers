@@ -67,8 +67,8 @@ const AssetPricing = struct {
             return 0;
         }
 
-        var acc: i32 = 0;
-        var count: i32 = 0;
+        var acc: i64 = 0;
+        var count: u32 = 0;
 
         for (a.prices.items) |p| {
             if (lb <= p.timestamp and p.timestamp <= ub) {
@@ -81,7 +81,7 @@ const AssetPricing = struct {
             return 0;
         }
 
-        const mean = @divFloor(acc, count);
+        const mean: i32 = @intCast(@divFloor(acc, count));
         return mean;
     }
 };
