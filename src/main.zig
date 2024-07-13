@@ -1,6 +1,6 @@
 const std = @import("std");
 const net = std.net;
-const isprime = @import("isprime.zig");
+const mte = @import("mean_to_an_end.zig");
 
 const Args = struct {
     addr: []const u8,
@@ -35,5 +35,5 @@ pub fn main() !void {
     const addr = parsed.addr;
     const port = parsed.port;
 
-    try isprime.run(addr, port);
+    try mte.run(addr, port);
 }

@@ -22,6 +22,7 @@ fn parseMsg(bytes: []const u8) ParseError!ParseResponse {
         const maxtime = std.mem.readInt(i32, bytes[5..9], std.builtin.Endian.big);
         return .{ .query = .{ .maxtime = maxtime, .mintime = mintime } };
     } else {
+        std.debug.print("Invalid Leading Char. Received: {}\n", .{leading});
         return ParseError.InvalidLeadingChar;
     }
 }
@@ -57,7 +58,7 @@ const AssetPricing = struct {
         self.prices.deinit();
     }
 
-    pub fn insert(self: AssetPricing, price: Price) !void {
+    pub fn insert(self: *AssetPricing, price: Price) !void {
         try self.prices.append(price);
     }
 
@@ -67,31 +68,84 @@ const AssetPricing = struct {
         }
 
         var acc: i32 = 0;
-        const len: i32 = @intCast(a.prices.items.len);
-
-        if (!len) {
-            return 0;
-        }
+        var count: i32 = 0;
 
         for (a.prices.items) |p| {
             if (lb <= p.timestamp and p.timestamp <= ub) {
+                count += 1;
                 acc += p.cents;
             }
         }
 
-        const mean = acc / len;
+        if (count == 0) {
+            return 0;
+        }
+
+        const mean = @divFloor(acc, count);
         return mean;
     }
 };
 
 test "pricing" {
     const allocator = std.testing.allocator;
-    const ap = AssetPricing.init(allocator);
-    ap.insert(.{ .timestamp = 12345, .cents = 101 });
-    ap.insert(.{ .timestamp = 12346, .cents = 102 });
-    ap.insert(.{ .timestamp = 12347, .cents = 100 });
-    ap.insert(.{ .timestamp = 40960, .cents = 5 });
+    var ap = AssetPricing.init(allocator);
+    defer ap.deinit();
+    try ap.insert(.{ .timestamp = 12345, .cents = 101 });
+    try ap.insert(.{ .timestamp = 12346, .cents = 102 });
+    try ap.insert(.{ .timestamp = 12347, .cents = 100 });
+    try ap.insert(.{ .timestamp = 40960, .cents = 5 });
 
     const avg = ap.avg(12288, 16384);
     try std.testing.expectEqual(101, avg);
+}
+
+const MSG_LEN = 9;
+
+fn handleConnection(conn: std.net.Server.Connection) !void {
+    std.log.info("Handling connection from {}\n", .{conn.address});
+    defer conn.stream.close();
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+    var reader = conn.stream.reader();
+    var writer = conn.stream.writer();
+
+    var pricing = AssetPricing.init(allocator);
+    defer pricing.deinit();
+
+    while (true) {
+        const msg_raw = try reader.readBoundedBytes(MSG_LEN);
+        if (msg_raw.len == 0) {
+            // End of stream reached
+            std.log.info("End of stream reached\n", .{});
+            return;
+        }
+        std.log.info("handling msg: {}\n", .{msg_raw});
+        const msg = try parseMsg(msg_raw.constSlice());
+        std.log.info("parsed: {}\n", .{msg});
+
+        switch (msg) {
+            .query => |q| {
+                const avg = pricing.avg(q.mintime, q.maxtime);
+                std.log.info("calculated avg: {}\n", .{avg});
+                try writer.writeInt(i32, avg, std.builtin.Endian.big);
+            },
+            .insert => |i| {
+                try pricing.insert(.{ .cents = i.price, .timestamp = i.timestamp });
+            },
+        }
+    }
+}
+
+pub fn run(addr: []const u8, port: u16) !void {
+    const address = try std.net.Address.parseIp(addr, port);
+    var server = try address.listen(.{ .reuse_port = true, .reuse_address = true, .kernel_backlog = 128, .force_nonblocking = false });
+    defer server.deinit();
+    std.log.info("listening on {}\n", .{address});
+    while (true) {
+        const conn = try server.accept();
+        std.log.info("New connection from {}\n", .{conn.address});
+        const thread = try std.Thread.spawn(.{}, handleConnection, .{conn});
+        thread.detach();
+    }
 }
