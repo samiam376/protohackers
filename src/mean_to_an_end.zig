@@ -49,12 +49,16 @@ const Price = struct {
 const AssetPricing = struct {
     prices: std.ArrayList(Price),
 
-    pub fn new(allocator: std.mem.Allocator) AssetPricing {
+    pub fn init(allocator: std.mem.Allocator) AssetPricing {
         return AssetPricing{ .prices = std.ArrayList(Price).init(allocator) };
     }
 
     pub fn deinit(self: *AssetPricing) void {
         self.prices.deinit();
+    }
+
+    pub fn insert(self: AssetPricing, price: Price) !void {
+        try self.prices.append(price);
     }
 
     pub fn avg(a: AssetPricing, lb: i32, ub: i32) i32 {
@@ -79,3 +83,15 @@ const AssetPricing = struct {
         return mean;
     }
 };
+
+test "pricing" {
+    const allocator = std.testing.allocator;
+    const ap = AssetPricing.init(allocator);
+    ap.insert(.{ .timestamp = 12345, .cents = 101 });
+    ap.insert(.{ .timestamp = 12346, .cents = 102 });
+    ap.insert(.{ .timestamp = 12347, .cents = 100 });
+    ap.insert(.{ .timestamp = 40960, .cents = 5 });
+
+    const avg = ap.avg(12288, 16384);
+    try std.testing.expectEqual(101, avg);
+}
