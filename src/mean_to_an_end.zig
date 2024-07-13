@@ -116,7 +116,6 @@ fn handleConnection(conn: std.net.Server.Connection) !void {
     while (true) {
         const msg_raw = try reader.readBoundedBytes(MSG_LEN);
         if (msg_raw.len == 0) {
-            // End of stream reached
             std.log.info("End of stream reached\n", .{});
             return;
         }
