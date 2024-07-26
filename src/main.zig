@@ -1,6 +1,6 @@
 const std = @import("std");
 const net = std.net;
-const mte = @import("mean_to_an_end.zig");
+const chat = @import("budget_chat.zig");
 
 const Args = struct {
     addr: []const u8,
@@ -29,11 +29,12 @@ fn parseArgs(args: *std.process.ArgIterator) !Args {
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
     const allocator = gpa.allocator();
     var args = try std.process.argsWithAllocator(allocator);
     const parsed = try parseArgs(&args);
     const addr = parsed.addr;
     const port = parsed.port;
 
-    try mte.run(addr, port);
+    try chat.run(allocator, addr, port);
 }

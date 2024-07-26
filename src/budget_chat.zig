@@ -56,3 +56,94 @@ test "fmt_msg" {
 
     try std.testing.expectEqualStrings("[Alice] Hello, World!\n", msg);
 }
+
+const ChatRoom = struct {
+    connections: std.StringHashMap(std.net.Server.Connection),
+    allocator: std.mem.Allocator,
+    mutex: std.Thread.Mutex,
+
+    const Self = @This();
+
+    pub fn init(allocator: std.mem.Allocator) Self {
+        return .{ .allocator = allocator, .mutex = .{}, .connections = std.StringHashMap(std.StringHashMap(std.net.Server.Connection)).init() };
+    }
+
+    pub fn deinit(self: *Self) void {
+        self.connections.deinit();
+    }
+
+    pub fn presence_notification(self: *Self, target_name: []const u8) !void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        const connection = self.connections.get(target_name);
+        if (connection) |conn| {
+            var names = std.ArrayList([]u8).init(self.allocator);
+            for (self.connections.keyIterator().items) |name| {
+                if (!std.mem.eql(u8, target_name, name)) {
+                    names.append(name);
+                }
+            }
+
+            const msg = try announce_names_msg(self.allocator, try names.toOwnedSlice());
+            try conn.stream.writeAll(msg);
+        }
+    }
+};
+
+const Members = std.StringHashMap(std.net.Server.Connection);
+
+const DELIM = '\n';
+const MIN_NAME_LEN = 16;
+const MAX_SIZE = 1000;
+
+fn handleConnection(allocator: std.mem.Allocator, conn: std.net.Server.Connection, members: *Members) !void {
+    std.log.info("Handling connection from {}\n", .{conn.address});
+    defer conn.stream.close();
+    var reader = conn.stream.reader();
+    var writer = conn.stream.writer();
+
+    try writer.writeAll(intro_msg);
+    var nameBuffer = std.ArrayList(u8).init(allocator);
+    defer nameBuffer.deinit();
+    reader.readUntilDelimiterArrayList(&nameBuffer, DELIM, MAX_SIZE) catch |err| {
+        if (err == error.EndOfStream) {
+            std.log.info("Connection closed by {}\n", .{conn.address});
+            return;
+        }
+
+        std.log.err("Error reading from stream: {}", .{err});
+        return;
+    };
+
+    const name = try nameBuffer.toOwnedSlice();
+    if (name.len < 16) {
+        std.log.info("name too short", {});
+        conn.stream.close();
+        return;
+    }
+    try members.put(name, conn);
+    defer {
+        const removed = members.remove(name);
+        std.debug.assert(removed);
+    }
+
+    // while (true) {}
+}
+
+pub fn run(allocator: std.mem.Allocator, addr: []const u8, port: u16) !void {
+    var members = Members.init(allocator);
+    defer members.deinit();
+
+    const address = try std.net.Address.parseIp(addr, port);
+    var server = try address.listen(.{ .reuse_port = true, .reuse_address = true, .kernel_backlog = 128, .force_nonblocking = false });
+    defer server.deinit();
+    std.log.info("listening on {}\n", .{address});
+
+    while (true) {
+        const conn = try server.accept();
+        std.log.info("New connection from {}\n", .{conn.address});
+        const thread = try std.Thread.spawn(.{}, handleConnection, .{ allocator, conn, &members });
+        thread.detach();
+    }
+}
